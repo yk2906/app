@@ -55,7 +55,7 @@ jobs:
         run: |
           # ManifestリポジトリをApp Tokenを使ってクローン
           git clone https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/${{ env.MANIFEST_REPO }}.git manifest-repo
-          cd manifest-repo/steam-bot/overlays/oci-prod
+          cd infra/kubernetes/steam-bot/overlays/prod
           
           # Kustomizeでイメージタグを最新のコミットハッシュに書き換え
           # (kubectlに同梱されているので、kustomizeコマンドが使えます)
