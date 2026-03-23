@@ -5,6 +5,7 @@ on:
     branches: [ "main" ]
     paths:
       - 'steam-bot/**'
+  workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
