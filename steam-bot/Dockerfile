@@ -3,6 +3,8 @@ ENV PYTHONUNBUFFERED=1
 
 WORKDIR /app
 
+RUN pip install --no-cache-dir discord.py
+
 COPY main.py .
 
 CMD ["python", "main.py"]
