@@ -1,14 +1,25 @@
-import time
+import discord
 import os
 
-def main():
-    print("--- Steam Bot Lifecycle Started ---", flush=True)
-    env_test = os.getenv("APP_ENV", "local-test")
-    print(f"Current Environment: {env_test}")
+# 接続に必要な「インテント」の設定
+intents = discord.Intents.default()
+intents.message_content = True
 
-    while True:
-        print("Bot is running and waiting for Steam API integration...")
-        time.sleep(60) # 1分ごとにログを出す
+client = discord.Client(intents=intents)
 
-if __name__ == "__main__":
-    main()
+@client.event
+async def on_ready():
+    print(f'--- Logged in as {client.user} (ID: {client.user.id}) ---', flush=True)
+
+@client.event
+async def on_message(message):
+    # 自分のメッセージには反応しない
+    if message.author == client.user:
+        return
+
+    if message.content == '!hello':
+        await message.channel.send('Hello from OCI (k3s)!')
+
+# 本番では環境変数から読み込むようにします
+TOKEN = os.getenv('DISCORD_TOKEN')
+client.run(TOKEN)
