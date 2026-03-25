@@ -32,3 +32,5 @@ async def on_message(message):
             await message.channel.send(f"直近2週間で、{name} を {playtime}時間 プレイしています！")
         else:
             await message.channel.send("最近遊んだゲームの情報が取得できませんでした。プロフィールの公開設定を確認してください。")
+
+client.run(DISCORD_TOKEN)
