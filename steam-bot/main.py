@@ -2,11 +2,13 @@ import os
 import requests
 import discord
 
-# 前半のIntents設定やClient作成はそのまま維持してください
-# ...
+intents = discord.Intents.default()
+intents.message_content = True
+client = discord.Client(intents=intents)
 
 STEAM_KEY = os.getenv('STEAM_API_KEY')
 STEAM_ID = "76561199287630138"
+DISCORD_TOKEN = os.getenv('DISCORD_TOKEN')
 
 @client.event
 async def on_message(message):
