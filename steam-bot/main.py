@@ -54,4 +54,40 @@ async def on_message(message):
         else:
             await message.channel.send("全期間のデータが取得できませんでした。")
 
+    elif message.content == '!steam_full_list':
+            # include_appinfo=1 を忘れない（名前取得のため）
+            url = f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/?key={STEAM_KEY}&steamid={STEAM_ID}&format=json&include_played_free_games=1&include_appinfo=1"
+            
+            response = requests.get(url).json()
+
+            if 'response' in response and 'games' in response['response']:
+                # プレイ時間順にソート
+                all_games = sorted(response['response']['games'], key=lambda x: x.get('playtime_forever', 0), reverse=True)
+                
+                # テキストデータを作成
+                report_lines = ["=== Steam 全ゲームプレイ時間リスト ===\n"]
+                for i, game in enumerate(all_games, 1):
+                    name = game.get('name', 'Unknown')
+                    hours = game.get('playtime_forever', 0) // 60
+                    # 1分でもプレイしたことがあるものだけ抽出
+                    if hours >= 0:
+                        report_lines.append(f"{i:3}. {name[:40]:<40} : {hours:5,} 時間")
+
+                full_report = "\n".join(report_lines)
+
+                # --- インフラ屋の知恵：2000文字を超える場合はファイルとして送る ---
+                if len(full_report) > 1900:
+                    with open("steam_report.txt", "w", encoding="utf-8") as f:
+                        f.write(full_report)
+                    
+                    # ファイルを添付して送信
+                    await message.channel.send("全データの件数が多いため、ファイルにまとめました！", file=discord.File("steam_report.txt"))
+                    
+                    # 送信後はファイルを削除（コンテナ内の掃除）
+                    os.remove("steam_report.txt")
+                else:
+                    await message.channel.send(f"```\n{full_report}\n```")
+            else:
+                await message.channel.send("データを取得できませんでした。")
+
 client.run(DISCORD_TOKEN)
