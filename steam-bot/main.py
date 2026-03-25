@@ -10,10 +10,12 @@ STEAM_ID = "76561199287630138"
 
 @client.event
 async def on_message(message):
+    print(f"DEBUG: 受信メッセージ内容: '{message.content}'", flush=True)
     if message.author == client.user:
         return
 
     if message.content == '!steam':  # コロンを追加
+        print("DEBUG: !steam 判定を通過しました", flush=True)
         print(f"DEBUG: Steam API Key status: {'Found' if STEAM_KEY else 'Not Found'}", flush=True)
         
         url = f"http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={STEAM_KEY}&steamid={STEAM_ID}&format=json"
