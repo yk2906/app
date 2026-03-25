@@ -1,25 +1,23 @@
-import discord
 import os
+import requests
+import discord
 
-# 接続に必要な「インテント」の設定
-intents = discord.Intents.default()
-intents.message_content = True
-
-client = discord.Client(intents=intents)
-
-@client.event
-async def on_ready():
-    print(f'--- Logged in as {client.user} (ID: {client.user.id}) ---', flush=True)
+STEAM_KEY = os.getenv('STEAM_API_KEY')
+STEAM_ID = "76561199287630138"
 
 @client.event
 async def on_message(message):
-    # 自分のメッセージには反応しない
     if message.author == client.user:
         return
 
-    if message.content == '!hello':
-        await message.channel.send('Hello from OCI (k3s)!')
+    if message.content == '!steam'
+        url = url = f"http://api.steampowered.com/IPlayerService/GetRecentlyPlayedGames/v0001/?key={STEAM_KEY}&steamid={STEAM_ID}&format=json"
+        response = requests.get(url).json()
 
-# 本番では環境変数から読み込むようにします
-TOKEN = os.getenv('DISCORD_TOKEN')
-client.run(TOKEN)
+        if 'games' in response['response']:
+            game = response['response']['games'][0]
+            name = game['name']
+            playtime = game['playtime_forever'] // 60
+            await message.channel.send(f"直近2週間で、{name} を {playtime}時間 プレイしています！")
+        else:
+            await message.channel.send("最近遊んだゲームが見つかりませんでした。")
