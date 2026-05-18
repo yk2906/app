@@ -87,8 +87,9 @@ async def on_message(message):
             
             for i, game in enumerate(all_games[:5], 1):
                 name = game.get('name', 'Unknown')
+                appid = game.get('appid', '?')
                 hours = game.get('playtime_forever', 0) // 60
-                msg += f"{i}位: **{name}** ({hours:,}時間)\n"
+                msg += f"{i}位: **{name}** ({hours:,}時間) · AppID `{appid}`\n"
             
             await message.channel.send(msg)
         else:
