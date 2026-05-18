@@ -1,15 +1,15 @@
-name: Build workflow-demo image
+name: Build slack-notion-sync image
 
 on:
   push:
     branches: [main]
     paths:
-      - "workflow-demo/**"
+      - "test/**"
   workflow_dispatch:
 
 env:
   REGISTRY: ghcr.io
-  IMAGE_NAME: ${{ github.repository_owner }}/workflow-demo
+  IMAGE_NAME: ${{ github.repository_owner }}/slack-notion-sync
 
 jobs:
   build-and-push:
@@ -25,9 +25,7 @@ jobs:
       - name: Build and push to GHCR
         uses: ./.github/actions/docker-build-push-ghcr
         with:
-          context: ./workflow-demo
+          context: ./test
           registry: ${{ env.REGISTRY }}
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:latest
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
           github_token: ${{ secrets.GITHUB_TOKEN }}
