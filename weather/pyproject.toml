@@ -1,0 +1,7 @@
+[project]
+name = "weather"
+version = "0.1.0"
+description = "Open-Meteo API から明日の天気予報を取得する"
+readme = "README.md"
+requires-python = ">=3.15"
+dependencies = []
