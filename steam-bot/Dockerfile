@@ -1,6 +1,8 @@
 FROM python:3.11-alpine
 ENV PYTHONUNBUFFERED=1
 
+RUN apk add --no-cache git
+
 WORKDIR /app
 
 COPY requirements.txt .
