@@ -68,6 +68,19 @@ class TomorrowForecast:
             lines.append(f"降水確率: {self.precipitation_probability_pct}%")
         return "\n".join(lines)
 
+    def format_discord(self) -> str:
+        lines = [
+            "🌤️ **明日の天気予報**",
+            f"**日付:** {self.date}",
+            f"**天気:** {self.weather}",
+            f"**最高気温:** {self.temp_max_c:.1f}°C",
+            f"**最低気温:** {self.temp_min_c:.1f}°C",
+            f"**降水量:** {self.precipitation_mm:.1f} mm",
+        ]
+        if self.precipitation_probability_pct is not None:
+            lines.append(f"**降水確率:** {self.precipitation_probability_pct}%")
+        return "\n".join(lines)
+
 
 def _env_float(name: str, default: float) -> float:
     raw = os.environ.get(name)
@@ -139,6 +152,47 @@ def fetch_tomorrow_forecast(
     )
 
 
+def _env_optional(name: str) -> str | None:
+    raw = os.environ.get(name)
+    if raw is None or not raw.strip():
+        return None
+    return raw.strip()
+
+
+def send_discord_message(content: str, timeout: float = 30.0) -> None:
+    token = _env_optional("DISCORD_TOKEN")
+    channel_id = _env_optional("DISCORD_CHANNEL_ID")
+
+    if token is None and channel_id is None:
+        return
+    if token is None or channel_id is None:
+        raise SystemExit(
+            "DISCORD_TOKEN and DISCORD_CHANNEL_ID must both be set for Discord notify"
+        )
+
+    url = f"https://discord.com/api/v10/channels/{channel_id}/messages"
+    payload = json.dumps({"content": content}).encode()
+    req = urllib.request.Request(
+        url,
+        data=payload,
+        headers={
+            "Authorization": f"Bot {token}",
+            "Content-Type": "application/json",
+            "User-Agent": "weather-bot/1.0",
+        },
+        method="POST",
+    )
+
+    try:
+        with urllib.request.urlopen(req, timeout=timeout) as resp:
+            resp.read()
+    except urllib.error.HTTPError as e:
+        body = e.read().decode(errors="replace")
+        raise SystemExit(f"Discord API failed: {e.code} {e.reason}: {body}") from e
+    except OSError as e:
+        raise SystemExit(f"Discord API failed: {e}") from e
+
+
 def main() -> None:
     latitude = _env_float("LATITUDE", 35.6762)  # 東京
     longitude = _env_float("LONGITUDE", 139.6503)
@@ -151,7 +205,9 @@ def main() -> None:
         timezone=timezone,
         timeout=timeout,
     )
-    print(forecast.format())
+    text = forecast.format()
+    print(text)
+    send_discord_message(forecast.format_discord(), timeout=timeout)
 
 
 if __name__ == "__main__":
