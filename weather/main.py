@@ -14,6 +14,13 @@ from zoneinfo import ZoneInfo
 
 OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
 
+# 取得対象の地点 (名前, 緯度, 経度)
+LOCATIONS: list[tuple[str, float, float]] = [
+    ("東京", 35.6762, 139.6503),
+    ("大阪市", 34.6937, 135.5023),
+    ("松江市", 35.4723, 133.0505),
+]
+
 # WMO Weather interpretation codes (Open-Meteo)
 WEATHER_LABELS: dict[int, str] = {
     0: "快晴",
@@ -49,6 +56,7 @@ WEATHER_LABELS: dict[int, str] = {
 
 @dataclass(frozen=True)
 class TomorrowForecast:
+    location: str
     date: str
     weather: str
     temp_max_c: float
@@ -58,6 +66,7 @@ class TomorrowForecast:
 
     def format(self) -> str:
         lines = [
+            f"地点: {self.location}",
             f"日付: {self.date}",
             f"天気: {self.weather}",
             f"最高気温: {self.temp_max_c:.1f}°C",
@@ -70,7 +79,7 @@ class TomorrowForecast:
 
     def format_discord(self) -> str:
         lines = [
-            "🌤️ **明日の天気予報**",
+            f"🌤️ **明日の天気予報 ({self.location})**",
             f"**日付:** {self.date}",
             f"**天気:** {self.weather}",
             f"**最高気温:** {self.temp_max_c:.1f}°C",
@@ -99,6 +108,7 @@ def _weather_label(code: int) -> str:
 
 
 def fetch_tomorrow_forecast(
+    location: str,
     latitude: float,
     longitude: float,
     timezone: str = "Asia/Tokyo",
@@ -141,6 +151,7 @@ def fetch_tomorrow_forecast(
 
     precip_prob = daily.get("precipitation_probability_max")
     return TomorrowForecast(
+        location=location,
         date=target,
         weather=_weather_label(int(daily["weather_code"][idx])),
         temp_max_c=float(daily["temperature_2m_max"][idx]),
@@ -194,20 +205,25 @@ def send_discord_message(content: str, timeout: float = 30.0) -> None:
 
 
 def main() -> None:
-    latitude = _env_float("LATITUDE", 35.6762)  # 東京
-    longitude = _env_float("LONGITUDE", 139.6503)
     timezone = os.environ.get("TIMEZONE", "Asia/Tokyo").strip() or "Asia/Tokyo"
     timeout = _env_float("HTTP_GET_TIMEOUT", 30.0)
 
-    forecast = fetch_tomorrow_forecast(
-        latitude=latitude,
-        longitude=longitude,
-        timezone=timezone,
+    forecasts = [
+        fetch_tomorrow_forecast(
+            location=location,
+            latitude=latitude,
+            longitude=longitude,
+            timezone=timezone,
+            timeout=timeout,
+        )
+        for location, latitude, longitude in LOCATIONS
+    ]
+
+    print("\n\n".join(forecast.format() for forecast in forecasts))
+    send_discord_message(
+        "\n\n".join(forecast.format_discord() for forecast in forecasts),
         timeout=timeout,
     )
-    text = forecast.format()
-    print(text)
-    send_discord_message(forecast.format_discord(), timeout=timeout)
 
 
 if __name__ == "__main__":
