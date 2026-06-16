@@ -47,7 +47,9 @@ if other_hours > 0:
 tab1, tab2 = st.tabs(["円グラフ", "棒グラフ"])
 
 with tab1:
-    fig_pie = px.pie(top, names="name", values="hours", title=f"プレイ時間の内訳（上位{top_n}作品）")
+    top_sorted = top.sort_values("hours", ascending=False)
+    fig_pie = px.pie(top_sorted, names="name", values="hours", title=f"プレイ時間の内訳（上位{top_n}作品）")
+    fig_pie.update_traces(direction="clockwise", sort=False)
     st.plotly_chart(fig_pie, use_container_width=True)
 
 with tab2:
