@@ -10,12 +10,19 @@ STEAM_ID = "76561199287630138"
 
 @st.cache_data
 def fetch_games():
+    if not STEAM_KEY:
+        st.error("STEAM_API_KEY が設定されていません。Streamlit Cloud の Secrets を確認してください。")
+        st.stop()
     url = (
         f"http://api.steampowered.com/IPlayerService/GetOwnedGames/v0001/"
         f"?key={STEAM_KEY}&steamid={STEAM_ID}&format=json"
         f"&include_played_free_games=1&include_appinfo=1"
     )
-    games = requests.get(url, timeout=30).json()["response"]["games"]
+    res = requests.get(url, timeout=30).json()
+    if "response" not in res or "games" not in res.get("response", {}):
+        st.error(f"Steam API からデータを取得できませんでした。APIキーやSteam IDを確認してください。\nレスポンス: {res}")
+        st.stop()
+    games = res["response"]["games"]
     df = pd.DataFrame(games)[["name", "playtime_forever"]]
     df["hours"] = df["playtime_forever"] // 60
     return df[df["hours"] > 0].sort_values("hours", ascending=False).reset_index(drop=True)
