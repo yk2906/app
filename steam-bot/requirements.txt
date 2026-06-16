@@ -1,2 +1,5 @@
 discord.py
 requests
+streamlit
+pandas
+plotly
