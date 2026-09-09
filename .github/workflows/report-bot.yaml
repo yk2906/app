@@ -1,0 +1,52 @@
+name: Build and Deploy report-bot
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'report-bot/**'
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_NAME: ${{ github.repository_owner }}/report-bot
+  MANIFEST_REPO: ${{ github.repository_owner }}/infra
+
+jobs:
+  build-and-push:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Checkout App Repo
+        uses: actions/checkout@v4
+
+      - name: Generate GitHub App Token
+        id: generate_token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ vars.APP_ID }}
+          private_key: ${{ secrets.APP_PRIVATE_KEY }}
+
+      - name: Build and push Docker image
+        uses: ./.github/actions/docker-build-push-ghcr
+        with:
+          context: ./report-bot
+          registry: ${{ env.REGISTRY }}
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update Kubernetes manifests
+        run: |
+          git clone https://x-access-token:${{ steps.generate_token.outputs.token }}@github.com/${{ env.MANIFEST_REPO }}.git infra
+          cd infra/kubernetes/report-bot/overlays/prod
+
+          kustomize edit set image report-bot-image=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ github.sha }}
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add .
+          git commit -m "Deploy report-bot: ${{ github.sha }}"
+          git push
