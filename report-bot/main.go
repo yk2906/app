@@ -25,6 +25,27 @@ func main() {
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte("report-bot is running\n"))
 	})
+	// SMTP送信の動作確認用。宛先はテスト固定でy_kohama@bold.ne.jpに送る。
+	mux.HandleFunc("/send-test", func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost {
+			w.WriteHeader(http.StatusMethodNotAllowed)
+			return
+		}
+		cfg, err := smtpConfigFromEnv()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		const testTo = "y_kohama@bold.ne.jp"
+		if err := sendMail(cfg, testTo, "report-bot SMTPテスト", "report-botからのSMTP送信テストです。"); err != nil {
+			log.Printf("send-test failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		log.Printf("send-test succeeded: to=%s", testTo)
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte("sent\n"))
+	})
 
 	srv := &http.Server{
 		Addr:         ":" + port,
