@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"log"
 	"net/http"
@@ -45,6 +46,22 @@ func main() {
 		log.Printf("send-test succeeded: to=%s", testTo)
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte("sent\n"))
+	})
+	// 判定ロジックの動作確認用。3レポートの完成状況をJSONで返す。
+	mux.HandleFunc("/check", func(w http.ResponseWriter, r *http.Request) {
+		ctx, cancel := context.WithTimeout(r.Context(), 20*time.Second)
+		defer cancel()
+		results, err := checkAllReports(ctx)
+		if err != nil {
+			log.Printf("check failed: %v", err)
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		for _, res := range results {
+			log.Printf("check: %s complete=%v missing=%v", res.Name, res.IsComplete, res.Missing)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(results)
 	})
 
 	srv := &http.Server{
