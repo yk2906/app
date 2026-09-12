@@ -4,7 +4,7 @@ WORKDIR /src
 COPY go.mod ./
 RUN go mod download
 
-COPY main.go ./
+COPY *.go ./
 RUN CGO_ENABLED=0 go build -o /out/report-bot .
 
 FROM gcr.io/distroless/static-debian12
