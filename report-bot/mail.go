@@ -9,10 +9,11 @@ import (
 )
 
 type smtpConfig struct {
-	host     string
-	port     string
-	username string
-	password string
+	host          string
+	port          string
+	username      string
+	password      string
+	tlsServerName string
 }
 
 func smtpConfigFromEnv() (smtpConfig, error) {
@@ -21,9 +22,16 @@ func smtpConfigFromEnv() (smtpConfig, error) {
 		port:     os.Getenv("SMTP_PORT"),
 		username: os.Getenv("SMTP_USERNAME"),
 		password: os.Getenv("SMTP_PASSWORD"),
+		// mail.bold.ne.jpは共有ホスティング(extremeserv.net)経由で、
+		// 提示される証明書はSMTP_HOSTとは別名(*.extremeserv.net)になっている。
+		// 未設定ならSMTP_HOSTをそのまま証明書検証に使う。
+		tlsServerName: os.Getenv("SMTP_TLS_SERVER_NAME"),
 	}
 	if cfg.host == "" || cfg.port == "" || cfg.username == "" || cfg.password == "" {
 		return cfg, fmt.Errorf("SMTP_HOST/SMTP_PORT/SMTP_USERNAME/SMTP_PASSWORD が設定されていません")
+	}
+	if cfg.tlsServerName == "" {
+		cfg.tlsServerName = cfg.host
 	}
 	return cfg, nil
 }
@@ -39,7 +47,7 @@ func sendMail(cfg smtpConfig, to, subject, body string) error {
 	}
 	defer client.Close()
 
-	if err := client.StartTLS(&tls.Config{ServerName: cfg.host}); err != nil {
+	if err := client.StartTLS(&tls.Config{ServerName: cfg.tlsServerName}); err != nil {
 		return fmt.Errorf("STARTTLSに失敗: %w", err)
 	}
 
