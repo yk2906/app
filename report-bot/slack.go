@@ -122,12 +122,20 @@ func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	responseURL := values.Get("response_url")
+	isTestMode := strings.TrimSpace(values.Get("text")) == "test"
 
 	// Slackは3秒以内の応答を要求するため、先にACKだけ返す
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"text": "チェック中です..."})
 
 	go func() {
+		if isTestMode {
+			// 動作確認用: 判定をスキップして強制的に「完成」扱いの確認メッセージを出す。
+			log.Printf("test mode: 判定をスキップして送信確認メッセージを表示します")
+			postDraftMessage(responseURL, time.Now())
+			return
+		}
+
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
 
@@ -154,34 +162,37 @@ func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		today := time.Now()
-		key := monthKey(today)
-		draftStore.Lock()
-		draftStore.drafts[key] = true
-		draftStore.Unlock()
+		postDraftMessage(responseURL, time.Now())
+	}()
+}
 
-		postToResponseURL(responseURL, map[string]interface{}{
-			"text": draftSummaryText(today),
-			"blocks": []map[string]interface{}{
-				{
-					"type": "section",
-					"text": map[string]string{"type": "mrkdwn", "text": draftSummaryText(today)},
-				},
-				{
-					"type": "actions",
-					"elements": []map[string]interface{}{
-						{
-							"type":      "button",
-							"text":      map[string]string{"type": "plain_text", "text": "送信"},
-							"action_id": sendReportAction,
-							"value":     key,
-							"style":     "primary",
-						},
+func postDraftMessage(responseURL string, today time.Time) {
+	key := monthKey(today)
+	draftStore.Lock()
+	draftStore.drafts[key] = true
+	draftStore.Unlock()
+
+	postToResponseURL(responseURL, map[string]interface{}{
+		"text": draftSummaryText(today),
+		"blocks": []map[string]interface{}{
+			{
+				"type": "section",
+				"text": map[string]string{"type": "mrkdwn", "text": draftSummaryText(today)},
+			},
+			{
+				"type": "actions",
+				"elements": []map[string]interface{}{
+					{
+						"type":      "button",
+						"text":      map[string]string{"type": "plain_text", "text": "送信"},
+						"action_id": sendReportAction,
+						"value":     key,
+						"style":     "primary",
 					},
 				},
 			},
-		})
-	}()
+		},
+	})
 }
 
 type slackInteractionPayload struct {
