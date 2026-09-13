@@ -87,11 +87,30 @@ func missingListBlocksText(results []checkResult) string {
 		for _, item := range r.Missing {
 			fmt.Fprintf(&b, "    • %s\n", item)
 		}
+		for _, item := range r.OptionalMissing {
+			fmt.Fprintf(&b, "    • （任意）%s\n", item)
+		}
 	}
 	return b.String()
 }
 
-func draftSummaryText(today time.Time) string {
+// optionalMissingNoteText は必須ではないが未入力の項目を、送信をブロックしない
+// 参考情報として表示するためのテキストを組み立てる。全て入力済みなら空文字を返す。
+func optionalMissingNoteText(results []checkResult) string {
+	var b strings.Builder
+	for _, r := range results {
+		if len(r.OptionalMissing) == 0 {
+			continue
+		}
+		fmt.Fprintf(&b, "*%s*\n", r.Name)
+		for _, item := range r.OptionalMissing {
+			fmt.Fprintf(&b, "    • %s\n", item)
+		}
+	}
+	return b.String()
+}
+
+func draftSummaryText(today time.Time, results []checkResult) string {
 	var b strings.Builder
 	b.WriteString("今月のレポートは全て完成しています。以下の内容で送信できます:\n")
 	fmt.Fprintf(&b, "*宛先(テスト):* %s\n", testRecipient)
@@ -100,6 +119,10 @@ func draftSummaryText(today time.Time) string {
 	b.WriteString("*添付ファイル:*\n")
 	for _, r := range reports {
 		fmt.Fprintf(&b, "    • %s.xlsx\n", r.name)
+	}
+	if note := optionalMissingNoteText(results); note != "" {
+		b.WriteString("*任意項目が未入力です（送信は可能です）:*\n")
+		b.WriteString(note)
 	}
 	return b.String()
 }
@@ -140,7 +163,7 @@ func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
 		if isTestMode {
 			// 動作確認用: 判定をスキップして強制的に「完成」扱いの確認メッセージを出す。
 			log.Printf("test mode: 判定をスキップして送信確認メッセージを表示します")
-			postDraftMessage(responseURL, time.Now())
+			postDraftMessage(responseURL, time.Now(), nil)
 			return
 		}
 
@@ -170,17 +193,17 @@ func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		postDraftMessage(responseURL, time.Now())
+		postDraftMessage(responseURL, time.Now(), results)
 	}()
 }
 
-func postDraftMessage(responseURL string, today time.Time) {
+func postDraftMessage(responseURL string, today time.Time, results []checkResult) {
 	key := monthKey(today)
 	draftStore.Lock()
 	draftStore.drafts[key] = true
 	draftStore.Unlock()
 
-	summary := draftSummaryText(today)
+	summary := draftSummaryText(today, results)
 	postToResponseURL(responseURL, map[string]interface{}{
 		"text": summary,
 		"blocks": []map[string]interface{}{

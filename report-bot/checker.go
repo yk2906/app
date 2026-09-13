@@ -143,7 +143,12 @@ var udemyFixedCells = []fixedCell{
 	{"X9", "学習時間", true},
 	{"D17", "内容", true},
 	{"B23", "学んだこと", true},
-	{"B30", "今後の活用", false},
+	{"B30", "今後の活用", true},
+}
+
+// 必須ではないが、入力状況を任意項目として確認するセル。
+var udemyOptionalCells = []fixedCell{
+	{"B36", "活用実践の成果", false},
 }
 
 var jishuFixedCells = []fixedCell{
@@ -282,13 +287,14 @@ func getCellValues(svc *sheets.Service, fileID, sheetName string, cells []string
 	return values, nil
 }
 
-func checkUdemyReport(svc *sheets.Service, fileID, sheetName string) ([]string, error) {
+func checkUdemyReport(svc *sheets.Service, fileID, sheetName string) ([]string, []string, error) {
 	var missing []string
+	var optionalMissing []string
 
 	allCells := append(append([]string{}, udemySessionCells...), udemySessionTimeCells...)
 	allValues, err := getCellValues(svc, fileID, sheetName, allCells)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	sessionValues := allValues[:len(udemySessionCells)]
 	timeValues := allValues[len(udemySessionCells):]
@@ -316,7 +322,7 @@ func checkUdemyReport(svc *sheets.Service, fileID, sheetName string) ([]string, 
 	}
 	fixedValues, err := getCellValues(svc, fileID, sheetName, fixedCellsList)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	for i, fc := range udemyFixedCells {
 		value := strings.TrimSpace(fixedValues[i])
@@ -330,7 +336,21 @@ func checkUdemyReport(svc *sheets.Service, fileID, sheetName string) ([]string, 
 		}
 	}
 
-	return missing, nil
+	optionalCellsList := make([]string, len(udemyOptionalCells))
+	for i, fc := range udemyOptionalCells {
+		optionalCellsList[i] = fc.cell
+	}
+	optionalValues, err := getCellValues(svc, fileID, sheetName, optionalCellsList)
+	if err != nil {
+		return nil, nil, err
+	}
+	for i, fc := range udemyOptionalCells {
+		if strings.TrimSpace(optionalValues[i]) == "" {
+			optionalMissing = append(optionalMissing, fmt.Sprintf("本文:%s", fc.label))
+		}
+	}
+
+	return missing, optionalMissing, nil
 }
 
 func checkJishuReport(svc *sheets.Service, fileID, sheetName string) ([]string, error) {
@@ -352,9 +372,10 @@ func checkJishuReport(svc *sheets.Service, fileID, sheetName string) ([]string, 
 }
 
 type checkResult struct {
-	Name       string   `json:"name"`
-	IsComplete bool     `json:"is_complete"`
-	Missing    []string `json:"missing"`
+	Name            string   `json:"name"`
+	IsComplete      bool     `json:"is_complete"`
+	Missing         []string `json:"missing"`
+	OptionalMissing []string `json:"optional_missing,omitempty"`
 }
 
 func checkReport(svc *sheets.Service, report reportSpec, fileID string, today time.Time) (checkResult, error) {
@@ -373,11 +394,12 @@ func checkReport(svc *sheets.Service, report reportSpec, fileID string, today ti
 	if sheetName == "" {
 		result.Missing = append(result.Missing, "本文:今月のシートがまだ作成されていません")
 	} else if report.reportType == "udemy" {
-		missing, err := checkUdemyReport(svc, fileID, sheetName)
+		missing, optionalMissing, err := checkUdemyReport(svc, fileID, sheetName)
 		if err != nil {
 			return result, err
 		}
 		result.Missing = append(result.Missing, missing...)
+		result.OptionalMissing = append(result.OptionalMissing, optionalMissing...)
 	} else {
 		missing, err := checkJishuReport(svc, fileID, sheetName)
 		if err != nil {
