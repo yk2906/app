@@ -4,10 +4,12 @@ import (
 	"context"
 	"fmt"
 	"regexp"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"google.golang.org/api/drive/v3"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -15,16 +17,104 @@ import (
 // 受講時間・学習時間はこの分数未満なら未完了とする
 const minStudyMinutes = 120
 
+// レポートのスプレッドシートは「期」（例: 25期上期）ごとに新しいファイルとして
+// 作り直される（GAS copySpreadsheetReport.gs参照）。このフォルダの直下から
+// 最新の期フォルダを毎回自動選択し、その中のファイルIDを動的に解決する。
+// ファイルIDを固定でハードコードすると、期の切り替わり後に古いファイルを
+// チェックし続けてしまう（実際に発生した不具合）。
+const reportParentFolderID = "1D7NbyG5XwS0kDH-MmbmPQadn8EtZ-Usp"
+
+var periodFolderPattern = regexp.MustCompile(`^(\d+)期(上|下)期$`)
+
 type reportSpec struct {
 	name       string
-	fileID     string
 	reportType string // "udemy" or "jishu"
 }
 
 var reports = []reportSpec{
-	{name: "【項番2】Udemy受講レポート", fileID: "1TopTSdoMCM-FsLZyyJyppt_6v3JbK4L38kbQErN0x58", reportType: "udemy"},
-	{name: "【項番3】Udemy受講レポート", fileID: "1JKofkpoV4OWNSc33byyEmDThI_RJra50BBJRibkxTmE", reportType: "udemy"},
-	{name: "【項番4】自主勉強会開催レポート", fileID: "1K4j1_OqP11g2KUy-XQwcA5R-_ooKt0G9aAL_HOVwvv4", reportType: "jishu"},
+	{name: "【項番2】Udemy受講レポート", reportType: "udemy"},
+	{name: "【項番3】Udemy受講レポート", reportType: "udemy"},
+	{name: "【項番4】自主勉強会開催レポート", reportType: "jishu"},
+}
+
+func buildDriveClientReadonly(ctx context.Context) (*drive.Service, error) {
+	creds, err := loadGoogleCredentials(ctx, drive.DriveReadonlyScope)
+	if err != nil {
+		return nil, err
+	}
+	return drive.NewService(ctx, option.WithCredentials(creds))
+}
+
+// findLatestPeriodFolderID は「N期上期」「N期下期」という命名のフォルダのうち、
+// 最新のものを選ぶ。GAS Code.gs の getLatestPeriodFolder と同じロジック。
+func findLatestPeriodFolderID(driveSvc *drive.Service, parentFolderID string) (string, error) {
+	resp, err := driveSvc.Files.List().
+		Q(fmt.Sprintf("'%s' in parents and mimeType='application/vnd.google-apps.folder' and trashed=false", parentFolderID)).
+		Fields("files(id,name)").
+		Do()
+	if err != nil {
+		return "", fmt.Errorf("期フォルダ一覧の取得に失敗: %w", err)
+	}
+
+	type candidate struct {
+		id     string
+		number int
+		half   int // 上期=0, 下期=1
+	}
+	var candidates []candidate
+	for _, f := range resp.Files {
+		match := periodFolderPattern.FindStringSubmatch(f.Name)
+		if match == nil {
+			continue
+		}
+		number, err := strconv.Atoi(match[1])
+		if err != nil {
+			continue
+		}
+		half := 0
+		if match[2] == "下" {
+			half = 1
+		}
+		candidates = append(candidates, candidate{id: f.Id, number: number, half: half})
+	}
+	if len(candidates) == 0 {
+		return "", fmt.Errorf("期フォルダ（例: 25期上期）が見つかりませんでした。parentFolderId=%s", parentFolderID)
+	}
+	sort.Slice(candidates, func(i, j int) bool {
+		if candidates[i].number != candidates[j].number {
+			return candidates[i].number > candidates[j].number
+		}
+		return candidates[i].half > candidates[j].half
+	})
+	return candidates[0].id, nil
+}
+
+// resolveReportFileIDs は最新の期フォルダ内から、レポート名に一致するスプレッドシートの
+// ファイルIDを解決する。
+func resolveReportFileIDs(ctx context.Context) (map[string]string, error) {
+	driveSvc, err := buildDriveClientReadonly(ctx)
+	if err != nil {
+		return nil, err
+	}
+
+	periodFolderID, err := findLatestPeriodFolderID(driveSvc, reportParentFolderID)
+	if err != nil {
+		return nil, err
+	}
+
+	resp, err := driveSvc.Files.List().
+		Q(fmt.Sprintf("'%s' in parents and mimeType='application/vnd.google-apps.spreadsheet' and trashed=false", periodFolderID)).
+		Fields("files(id,name)").
+		Do()
+	if err != nil {
+		return nil, fmt.Errorf("期フォルダ内のスプレッドシート一覧の取得に失敗: %w", err)
+	}
+
+	fileIDs := make(map[string]string, len(resp.Files))
+	for _, f := range resp.Files {
+		fileIDs[f.Name] = f.Id
+	}
+	return fileIDs, nil
 }
 
 type tocColumn struct {
@@ -109,7 +199,9 @@ func serialToDate(serial string) (time.Time, bool) {
 }
 
 func findCurrentMonthTocRow(svc *sheets.Service, fileID string, today time.Time) ([]interface{}, error) {
-	resp, err := svc.Spreadsheets.Values.Get(fileID, "目次!C5:I10").Do()
+	// デフォルト(FORMATTED_VALUE)だと日付セルが「7月26日」のような表示文字列で返り、
+	// serialToDateでのシリアル値パースが常に失敗してしまうため、生の値を要求する。
+	resp, err := svc.Spreadsheets.Values.Get(fileID, "目次!C5:I10").ValueRenderOption("UNFORMATTED_VALUE").Do()
 	if err != nil {
 		return nil, fmt.Errorf("目次シートの取得に失敗: %w", err)
 	}
@@ -265,29 +357,29 @@ type checkResult struct {
 	Missing    []string `json:"missing"`
 }
 
-func checkReport(svc *sheets.Service, report reportSpec, today time.Time) (checkResult, error) {
+func checkReport(svc *sheets.Service, report reportSpec, fileID string, today time.Time) (checkResult, error) {
 	result := checkResult{Name: report.name}
 
-	tocRow, err := findCurrentMonthTocRow(svc, report.fileID, today)
+	tocRow, err := findCurrentMonthTocRow(svc, fileID, today)
 	if err != nil {
 		return result, err
 	}
 	result.Missing = append(result.Missing, tocMissingColumns(tocRow, report.reportType)...)
 
-	sheetName, err := findCurrentMonthSheetName(svc, report.fileID, today)
+	sheetName, err := findCurrentMonthSheetName(svc, fileID, today)
 	if err != nil {
 		return result, err
 	}
 	if sheetName == "" {
 		result.Missing = append(result.Missing, "本文:今月のシートがまだ作成されていません")
 	} else if report.reportType == "udemy" {
-		missing, err := checkUdemyReport(svc, report.fileID, sheetName)
+		missing, err := checkUdemyReport(svc, fileID, sheetName)
 		if err != nil {
 			return result, err
 		}
 		result.Missing = append(result.Missing, missing...)
 	} else {
-		missing, err := checkJishuReport(svc, report.fileID, sheetName)
+		missing, err := checkJishuReport(svc, fileID, sheetName)
 		if err != nil {
 			return result, err
 		}
@@ -299,6 +391,11 @@ func checkReport(svc *sheets.Service, report reportSpec, today time.Time) (check
 }
 
 func checkAllReports(ctx context.Context) ([]checkResult, error) {
+	fileIDs, err := resolveReportFileIDs(ctx)
+	if err != nil {
+		return nil, err
+	}
+
 	svc, err := buildSheetsClient(ctx)
 	if err != nil {
 		return nil, err
@@ -307,7 +404,11 @@ func checkAllReports(ctx context.Context) ([]checkResult, error) {
 
 	results := make([]checkResult, 0, len(reports))
 	for _, report := range reports {
-		result, err := checkReport(svc, report, today)
+		fileID, ok := fileIDs[report.name]
+		if !ok {
+			return nil, fmt.Errorf("%s のスプレッドシートが最新の期フォルダ内に見つかりませんでした", report.name)
+		}
+		result, err := checkReport(svc, report, fileID, today)
 		if err != nil {
 			return nil, fmt.Errorf("%s の判定に失敗: %w", report.name, err)
 		}

@@ -271,6 +271,11 @@ func sendDraftReport() error {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
+	fileIDs, err := resolveReportFileIDs(ctx)
+	if err != nil {
+		return fmt.Errorf("レポートファイルの解決に失敗: %w", err)
+	}
+
 	driveSvc, err := buildDriveClient(ctx)
 	if err != nil {
 		return fmt.Errorf("Driveクライアントの初期化に失敗: %w", err)
@@ -278,7 +283,11 @@ func sendDraftReport() error {
 
 	attachments := make([]mailAttachment, 0, len(reports))
 	for _, report := range reports {
-		data, err := exportAsXlsx(ctx, driveSvc, report.fileID)
+		fileID, ok := fileIDs[report.name]
+		if !ok {
+			return fmt.Errorf("%s のスプレッドシートが最新の期フォルダ内に見つかりませんでした", report.name)
+		}
+		data, err := exportAsXlsx(ctx, driveSvc, fileID)
 		if err != nil {
 			return err
 		}
