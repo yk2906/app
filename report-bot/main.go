@@ -63,6 +63,8 @@ func main() {
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(results)
 	})
+	mux.HandleFunc("/slack/commands", handleSlashCommand)
+	mux.HandleFunc("/slack/interactions", handleInteraction)
 
 	srv := &http.Server{
 		Addr:         ":" + port,
