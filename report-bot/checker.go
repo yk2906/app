@@ -376,10 +376,15 @@ type checkResult struct {
 	IsComplete      bool     `json:"is_complete"`
 	Missing         []string `json:"missing"`
 	OptionalMissing []string `json:"optional_missing,omitempty"`
+	SpreadsheetURL  string   `json:"spreadsheet_url"`
+}
+
+func spreadsheetURL(fileID string) string {
+	return fmt.Sprintf("https://docs.google.com/spreadsheets/d/%s/edit", fileID)
 }
 
 func checkReport(svc *sheets.Service, report reportSpec, fileID string, today time.Time) (checkResult, error) {
-	result := checkResult{Name: report.name}
+	result := checkResult{Name: report.name, SpreadsheetURL: spreadsheetURL(fileID)}
 
 	tocRow, err := findCurrentMonthTocRow(svc, fileID, today)
 	if err != nil {

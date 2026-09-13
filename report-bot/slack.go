@@ -90,6 +90,9 @@ func missingListBlocksText(results []checkResult) string {
 		for _, item := range r.OptionalMissing {
 			fmt.Fprintf(&b, "    • （任意）%s\n", item)
 		}
+		if r.SpreadsheetURL != "" {
+			fmt.Fprintf(&b, "    <%s|スプレッドシートを開く>\n", r.SpreadsheetURL)
+		}
 	}
 	return b.String()
 }
@@ -116,9 +119,20 @@ func draftSummaryText(today time.Time, results []checkResult) string {
 	fmt.Fprintf(&b, "*宛先(テスト):* %s\n", testRecipient)
 	fmt.Fprintf(&b, "*件名:* %s\n", mailSubject)
 	b.WriteString("*本文:*\n```\n" + mailBodyTmpl + "\n```\n")
+	urlByName := make(map[string]string, len(results))
+	for _, r := range results {
+		if r.SpreadsheetURL != "" {
+			urlByName[r.Name] = r.SpreadsheetURL
+		}
+	}
+
 	b.WriteString("*添付ファイル:*\n")
 	for _, r := range reports {
-		fmt.Fprintf(&b, "    • %s.xlsx\n", r.name)
+		fmt.Fprintf(&b, "    • %s.xlsx", r.name)
+		if url, ok := urlByName[r.name]; ok {
+			fmt.Fprintf(&b, " (<%s|スプレッドシートを開く>)", url)
+		}
+		b.WriteString("\n")
 	}
 	if note := optionalMissingNoteText(results); note != "" {
 		b.WriteString("*任意項目が未入力です（送信は可能です）:*\n")
