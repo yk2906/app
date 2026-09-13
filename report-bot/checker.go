@@ -3,13 +3,11 @@ package main
 import (
 	"context"
 	"fmt"
-	"os"
 	"regexp"
 	"strconv"
 	"strings"
 	"time"
 
-	"golang.org/x/oauth2/google"
 	"google.golang.org/api/option"
 	"google.golang.org/api/sheets/v4"
 )
@@ -95,17 +93,9 @@ func parseStudyMinutes(text string) (int, bool) {
 }
 
 func buildSheetsClient(ctx context.Context) (*sheets.Service, error) {
-	credsFile := os.Getenv("SHEETS_SERVICE_ACCOUNT_FILE")
-	if credsFile == "" {
-		return nil, fmt.Errorf("SHEETS_SERVICE_ACCOUNT_FILE が設定されていません")
-	}
-	data, err := os.ReadFile(credsFile)
+	creds, err := loadGoogleCredentials(ctx, sheets.SpreadsheetsReadonlyScope)
 	if err != nil {
-		return nil, fmt.Errorf("サービスアカウントファイルの読み込みに失敗: %w", err)
-	}
-	creds, err := google.CredentialsFromJSON(ctx, data, sheets.SpreadsheetsReadonlyScope)
-	if err != nil {
-		return nil, fmt.Errorf("認証情報の読み込みに失敗: %w", err)
+		return nil, err
 	}
 	return sheets.NewService(ctx, option.WithCredentials(creds))
 }

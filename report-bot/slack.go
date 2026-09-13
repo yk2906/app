@@ -104,21 +104,29 @@ func draftSummaryText(today time.Time) string {
 	return b.String()
 }
 
-func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
-	signingSecret := os.Getenv("SLACK_SIGNING_SECRET")
+// readVerifiedSlackForm はSlackからのリクエストを署名検証したうえでフォームとして解析する。
+// 検証・解析に失敗した場合はレスポンスを書き込み済みで false を返す。
+func readVerifiedSlackForm(w http.ResponseWriter, r *http.Request) (url.Values, bool) {
 	body, err := io.ReadAll(r.Body)
 	if err != nil {
 		http.Error(w, "リクエストの読み込みに失敗しました", http.StatusBadRequest)
-		return
+		return nil, false
 	}
-	if !verifySlackSignature(r, body, signingSecret) {
+	if !verifySlackSignature(r, body, os.Getenv("SLACK_SIGNING_SECRET")) {
 		http.Error(w, "署名検証に失敗しました", http.StatusUnauthorized)
-		return
+		return nil, false
 	}
-
 	values, err := url.ParseQuery(string(body))
 	if err != nil {
 		http.Error(w, "リクエストの解析に失敗しました", http.StatusBadRequest)
+		return nil, false
+	}
+	return values, true
+}
+
+func handleSlashCommand(w http.ResponseWriter, r *http.Request) {
+	values, ok := readVerifiedSlackForm(w, r)
+	if !ok {
 		return
 	}
 	responseURL := values.Get("response_url")
@@ -172,12 +180,13 @@ func postDraftMessage(responseURL string, today time.Time) {
 	draftStore.drafts[key] = true
 	draftStore.Unlock()
 
+	summary := draftSummaryText(today)
 	postToResponseURL(responseURL, map[string]interface{}{
-		"text": draftSummaryText(today),
+		"text": summary,
 		"blocks": []map[string]interface{}{
 			{
 				"type": "section",
-				"text": map[string]string{"type": "mrkdwn", "text": draftSummaryText(today)},
+				"text": map[string]string{"type": "mrkdwn", "text": summary},
 			},
 			{
 				"type": "actions",
@@ -204,20 +213,8 @@ type slackInteractionPayload struct {
 }
 
 func handleInteraction(w http.ResponseWriter, r *http.Request) {
-	signingSecret := os.Getenv("SLACK_SIGNING_SECRET")
-	body, err := io.ReadAll(r.Body)
-	if err != nil {
-		http.Error(w, "リクエストの読み込みに失敗しました", http.StatusBadRequest)
-		return
-	}
-	if !verifySlackSignature(r, body, signingSecret) {
-		http.Error(w, "署名検証に失敗しました", http.StatusUnauthorized)
-		return
-	}
-
-	values, err := url.ParseQuery(string(body))
-	if err != nil {
-		http.Error(w, "リクエストの解析に失敗しました", http.StatusBadRequest)
+	values, ok := readVerifiedSlackForm(w, r)
+	if !ok {
 		return
 	}
 
